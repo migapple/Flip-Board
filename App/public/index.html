@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Flip Board</title>
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --ink: #0a1f10;
+    --felt: #1a5c2e;
+    --felt-dark: #0d3d1e;
+    --felt-hover: #22703a;
+    --gold: #c9a227;
+    --gold-dim: rgba(201,162,39,.4);
+    --gold-border: #8b6914;
+    --text: #e8dfc8;
+    --text-muted: #9c8f6e;
+    --panel: rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; background: var(--ink); overflow: hidden; }
+  #app {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+    padding-top: var(--safe-top); padding-bottom: var(--safe-bottom);
+    background: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--text); align-items: center; justify-content: space-between;
+    user-select: none;
+  }
+
+  /* HEADER */
+  header {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px 6px;
+  }
+  .app-title { font-size: 17px; font-weight: normal; letter-spacing: .1em; color: var(--gold); text-transform: uppercase; }
+  .header-btns { display: flex; align-items: center; gap: 6px; }
+  .lang-btn {
+    padding: 5px 10px; background: rgba(201,162,39,.1);
+    border: 1px solid var(--gold-border); border-radius: 6px;
+    font-family: Georgia, serif; font-size: 12px; color: var(--gold); cursor: pointer;
+  }
+  .lang-btn:active { background: rgba(201,162,39,.25); }
+  .gear-btn {
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 19px;
+  }
+  .gear-btn:active { color: var(--gold); }
+
+  /* SCORES */
+  .scores {
+    display: flex; align-items: center;
+    width: 100%; max-width: 400px; padding: 0 14px;
+  }
+  .player-score {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; background: var(--panel); border-radius: 10px;
+  }
+  .player-score.right { flex-direction: row-reverse; }
+  .disc-avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+  .disc-avatar.black {
+    background: radial-gradient(circle at 35% 30%, #4a4a4a, #181818);
+    box-shadow: 0 2px 6px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.12);
+  }
+  .disc-avatar.white {
+    background: radial-gradient(circle at 35% 30%, #ffffff, #d8d4c8);
+    box-shadow: 0 2px 6px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  .player-info { flex: 1; }
+  .player-name { font-size: 11px; color: var(--text-muted); letter-spacing: .05em; text-transform: uppercase; }
+  .player-count { font-size: 28px; line-height: 1; }
+  .player-score.right .player-info { text-align: right; }
+  .vs-sep { font-size: 11px; color: var(--text-muted); padding: 0 8px; flex-shrink: 0; }
+
+  /* BOARD */
+  .board-container { display: flex; align-items: center; justify-content: center; flex: 1; width: 100%; }
+  .board-frame {
+    background: var(--felt-dark); border: 3px solid var(--gold-border); border-radius: 8px; padding: 7px;
+    box-shadow: 0 0 0 1px #3d2800, 0 8px 32px rgba(0,0,0,.7);
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(8, var(--cell));
+    grid-template-rows: repeat(8, var(--cell));
+    gap: 2px; background: var(--felt-dark);
+  }
+  .cell {
+    background: var(--felt); border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; position: relative; transition: background .12s;
+  }
+  .cell:active { background: var(--felt-hover); }
+  .cell.valid::after {
+    content: ''; width: 34%; aspect-ratio: 1; border-radius: 50%;
+    background: var(--gold-dim); border: 1.5px solid rgba(201,162,39,.65);
+  }
+  .disc { width: 78%; aspect-ratio: 1; border-radius: 50%; position: absolute; }
+  .disc.black {
+    background: radial-gradient(circle at 35% 30%, #505050, #181818);
+    box-shadow: 0 2px 5px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.1);
+  }
+  .disc.white {
+    background: radial-gradient(circle at 35% 30%, #ffffff, #d0ccc0);
+    box-shadow: 0 2px 5px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.5);
+  }
+  .disc.place { animation: place .2s ease; }
+  @keyframes place {
+    0% { transform: scale(0) translateY(-8px); opacity: 0; }
+    70% { transform: scale(1.12); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  /* BOTTOM */
+  .bottom-bar {
+    width: 100%; max-width: 400px;
+    padding: 4px 14px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .status-text { font-size: 13px; color: var(--text-muted); min-height: 18px; text-align: center; }
+  .status-text.hl { color: var(--gold); }
+  .dots span { display: inline-block; animation: blink 1.2s infinite; color: var(--gold); }
+  .dots span:nth-child(2) { animation-delay: .3s; }
+  .dots span:nth-child(3) { animation-delay: .6s; }
+  @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+  .new-game-btn {
+    width: 100%; padding: 11px;
+    background: rgba(201,162,39,.1); border: 1px solid var(--gold-border);
+    border-radius: 9px; font-family: Georgia, serif; font-size: 14px;
+    color: var(--gold); cursor: pointer;
+  }
+  .new-game-btn:active { background: rgba(201,162,39,.22); }
+
+  /* OVERLAYS */
+  .overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,.72); z-index: 100;
+    align-items: flex-end; justify-content: center;
+  }
+  .overlay.open { display: flex; }
+  .sheet {
+    background: #1a2010; border: 1px solid var(--gold-border);
+    border-radius: 16px 16px 0 0;
+    width: 100%; max-width: 480px;
+    padding: 20px 20px calc(20px + var(--safe-bottom));
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .sheet-title { font-size: 16px; color: var(--gold); letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+  .sheet-section { font-size: 11px; color: var(--text-muted); letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+  .btn-row { display: grid; gap: 8px; }
+  .btn-row.col2 { grid-template-columns: 1fr 1fr; }
+  .btn-row.col3 { grid-template-columns: 1fr 1fr 1fr; }
+  .opt-btn {
+    padding: 10px 4px; background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
+    font-family: Georgia, serif; font-size: 13px; color: var(--text); cursor: pointer; text-align: center;
+  }
+  .opt-btn.active { background: rgba(201,162,39,.18); border-color: var(--gold-border); color: var(--gold); }
+  .opt-btn:active { background: rgba(201,162,39,.25); }
+  .stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; text-align: center; }
+  .stat-box { background: rgba(255,255,255,.04); border-radius: 8px; padding: 10px 4px; }
+  .stat-num { font-size: 22px; }
+  .stat-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+  .sheet-btn {
+    padding: 12px; background: rgba(201,162,39,.12); border: 1px solid var(--gold-border);
+    border-radius: 8px; font-family: Georgia, serif; font-size: 14px; color: var(--gold); cursor: pointer; text-align: center;
+  }
+  .sheet-btn:active { background: rgba(201,162,39,.22); }
+  .sheet-btn.sec { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.1); color: var(--text-muted); font-size: 13px; }
+  .divider { height: 1px; background: rgba(255,255,255,.07); }
+
+  /* ABOUT */
+  .about-header { text-align: center; }
+  .about-version { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .sheet-scroll { overflow-y: auto; max-height: 52vh; -webkit-overflow-scrolling: touch; }
+  .app-list { display: flex; flex-direction: column; gap: 1px; }
+  .app-link {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 10px; border-radius: 7px; background: rgba(255,255,255,.03);
+    font-family: Georgia, serif; font-size: 13px; color: var(--text);
+    cursor: pointer; border: none; width: 100%; text-align: left;
+  }
+  .app-link:active { background: rgba(201,162,39,.15); color: var(--gold); }
+  .app-arrow { color: var(--gold-border); font-size: 14px; flex-shrink: 0; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="app-title" id="xTitle">Flip Board</div>
+    <div class="header-btns">
+      <button class="lang-btn" id="xLangBtn" onclick="toggleLang()">EN</button>
+      <button class="gear-btn" onclick="openSettings()">⚙</button>
+    </div>
+  </header>
+
+  <div class="scores">
+    <div class="player-score">
+      <div class="disc-avatar black"></div>
+      <div class="player-info">
+        <div class="player-name" id="xYou">Vous</div>
+        <div class="player-count" id="scoreBlack">2</div>
+      </div>
+    </div>
+    <div class="vs-sep">vs</div>
+    <div class="player-score right">
+      <div class="disc-avatar white"></div>
+      <div class="player-info">
+        <div class="player-name" id="xAI">IA</div>
+        <div class="player-count" id="scoreWhite">2</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="board-container">
+    <div class="board-frame">
+      <div class="board" id="board"></div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="status-text" id="status"></div>
+    <button class="new-game-btn" id="xNewBtn" onclick="openNewGame()">↺ Nouvelle partie</button>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="overlay" id="ovSettings" onclick="if(event.target===this)closeSettings()">
+    <div class="sheet">
+      <div class="sheet-title" id="xSettingsTitle">⚙ Réglages</div>
+      <div>
+        <div class="sheet-section" id="xDiffLabel">Niveau de difficulté</div>
+        <div class="btn-row col3">
+          <button class="opt-btn" id="sEasy" onclick="setDiff(2)"><span id="xEasy">Facile</span></button>
+          <button class="opt-btn active" id="sNorm" onclick="setDiff(4)"><span id="xNorm">Normal</span></button>
+          <button class="opt-btn" id="sHard" onclick="setDiff(6)"><span id="xHard">Expert</span></button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div>
+        <div class="sheet-section" id="xStatsTitle">Statistiques</div>
+        <div class="stats-row">
+          <div class="stat-box"><div class="stat-num" id="statW">0</div><div class="stat-lbl" id="xWins">Victoires</div></div>
+          <div class="stat-box"><div class="stat-num" id="statD">0</div><div class="stat-lbl" id="xDraws">Nulles</div></div>
+          <div class="stat-box"><div class="stat-num" id="statL">0</div><div class="stat-lbl" id="xLosses">Défaites</div></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <button class="sheet-btn" id="xSNewGame" onclick="closeSettings();setTimeout(openNewGame,80)">↺ Nouvelle partie</button>
+      <button class="sheet-btn sec" id="xSAbout" onclick="closeSettings();setTimeout(openAbout,80)">ℹ À propos</button>
+      <button class="sheet-btn sec" id="xSClose" onclick="closeSettings()">Fermer</button>
+    </div>
+  </div>
+
+  <!-- NEW GAME -->
+  <div class="overlay" id="ovNewGame" onclick="if(event.target===this)closeNewGame()">
+    <div class="sheet">
+      <div class="sheet-title" id="xNGTitle">Nouvelle partie</div>
+      <div>
+        <div class="sheet-section" id="xWhoStarts">Qui commence ?</div>
+        <div class="btn-row col2">
+          <button class="opt-btn active" id="stMe" onclick="setStarter('me')">
+            <div style="font-size:22px;margin-bottom:3px">●</div>
+            <div id="xStartMe">Moi (Noir)</div>
+          </button>
+          <button class="opt-btn" id="stAI" onclick="setStarter('ai')">
+            <div style="font-size:22px;margin-bottom:3px">○</div>
+            <div id="xStartAI">IA (Blanc)</div>
+          </button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div>
+        <div class="sheet-section" id="xDiffLabel2">Niveau</div>
+        <div class="btn-row col3">
+          <button class="opt-btn" id="nEasy" onclick="setDiff2(2)"><span id="xEasy2">Facile</span></button>
+          <button class="opt-btn active" id="nNorm" onclick="setDiff2(4)"><span id="xNorm2">Normal</span></button>
+          <button class="opt-btn" id="nHard" onclick="setDiff2(6)"><span id="xHard2">Expert</span></button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <button class="sheet-btn" id="xPlay" onclick="launchGame()">Jouer</button>
+      <button class="sheet-btn sec" id="xCancel" onclick="closeNewGame()">Annuler</button>
+    </div>
+  </div>
+
+  <!-- ABOUT -->
+  <div class="overlay" id="ovAbout" onclick="if(event.target===this)closeAbout()">
+    <div class="sheet">
+      <div class="about-header">
+        <div class="sheet-title" id="xAboutTitle">À propos</div>
+        <div class="about-version">Flip Board · v1.1 · © Michel Garlandat</div>
+      </div>
+      <div class="divider"></div>
+      <div class="sheet-section" id="xAboutApps">Mes autres applications</div>
+      <div class="sheet-scroll">
+        <div class="app-list" id="appList"></div>
+      </div>
+      <div class="divider"></div>
+      <button class="sheet-btn sec" id="xAboutClose" onclick="closeAbout()">Fermer</button>
+    </div>
+  </div>
+
+</div>
+<script>
+// ── i18n ──
+const T = {
+  fr:{
+    title:'Flip Board', you:'Vous', ai:'IA', langBtn:'EN',
+    newGame:'↺ Nouvelle partie',
+    yourTurn:'Votre tour ●', thinking:"L'IA réfléchit",
+    aiPasses:"L'IA passe — Votre tour ●", youPass:'Vous passez…',
+    win:(b,w)=>`Victoire ! ● ${b} — ${w} ○`,
+    lose:(b,w)=>`L'IA gagne ○ ${w} — ${b} ●`,
+    draw:n=>`Égalité ! ${n} — ${n}`,
+    settingsTitle:'⚙ Réglages', diffLabel:'Niveau de difficulté',
+    easy:'Facile', norm:'Normal', hard:'Expert',
+    statsTitle:'Statistiques', wins:'Victoires', draws:'Nulles', losses:'Défaites',
+    sNewGame:'↺ Nouvelle partie', sAbout:'ℹ À propos', close:'Fermer',
+    ngTitle:'Nouvelle partie', whoStarts:'Qui commence ?',
+    startMe:'Moi (Noir)', startAI:'IA (Blanc)', diffLabel2:'Niveau',
+    play:'Jouer', cancel:'Annuler',
+    aboutTitle:'À propos', aboutApps:'Mes autres applications', aboutClose:'Fermer'
+  },
+  en:{
+    title:'Flip Board', you:'You', ai:'AI', langBtn:'FR',
+    newGame:'↺ New game',
+    yourTurn:'Your turn ●', thinking:'AI is thinking',
+    aiPasses:'AI passes — Your turn ●', youPass:'You pass…',
+    win:(b,w)=>`You win! ● ${b} — ${w} ○`,
+    lose:(b,w)=>`AI wins ○ ${w} — ${b} ●`,
+    draw:n=>`Draw! ${n} — ${n}`,
+    settingsTitle:'⚙ Settings', diffLabel:'Difficulty level',
+    easy:'Easy', norm:'Normal', hard:'Expert',
+    statsTitle:'Statistics', wins:'Wins', draws:'Draws', losses:'Losses',
+    sNewGame:'↺ New game', sAbout:'ℹ About', close:'Close',
+    ngTitle:'New game', whoStarts:'Who starts?',
+    startMe:'Me (Black)', startAI:'AI (White)', diffLabel2:'Level',
+    play:'Play', cancel:'Cancel',
+    aboutTitle:'About', aboutApps:'My other apps', aboutClose:'Close'
+  }
+};
+
+let lang = localStorage.getItem('othello_lang') || 'fr';
+
+function applyLang() {
+  const l = T[lang];
+  const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+  set('xTitle', l.title); set('xLangBtn', l.langBtn);
+  set('xYou', l.you); set('xAI', l.ai);
+  set('xNewBtn', l.newGame);
+  set('xSettingsTitle', l.settingsTitle); set('xDiffLabel', l.diffLabel);
+  set('xEasy', l.easy); set('xNorm', l.norm); set('xHard', l.hard);
+  set('xStatsTitle', l.statsTitle);
+  set('xWins', l.wins); set('xDraws', l.draws); set('xLosses', l.losses);
+  set('xSNewGame', l.sNewGame); set('xSAbout', l.sAbout); set('xSClose', l.close);
+  set('xNGTitle', l.ngTitle); set('xWhoStarts', l.whoStarts);
+  set('xStartMe', l.startMe); set('xStartAI', l.startAI);
+  set('xDiffLabel2', l.diffLabel2);
+  set('xEasy2', l.easy); set('xNorm2', l.norm); set('xHard2', l.hard);
+  set('xPlay', l.play); set('xCancel', l.cancel);
+  set('xAboutTitle', l.aboutTitle); set('xAboutApps', l.aboutApps); set('xAboutClose', l.aboutClose);
+  if (!over) setStatus(cur === humanColor ? l.yourTurn : '');
+}
+
+function toggleLang() {
+  lang = lang === 'fr' ? 'en' : 'fr';
+  localStorage.setItem('othello_lang', lang);
+  applyLang();
+}
+
+// ── Game logic ──
+const E=0, B=1, W=2;
+const DIRS=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const WT=[
+  [120,-20,20,5,5,20,-20,120],[-20,-40,-5,-5,-5,-5,-40,-20],
+  [20,-5,15,3,3,15,-5,20],[5,-5,3,3,3,3,-5,5],
+  [5,-5,3,3,3,3,-5,5],[20,-5,15,3,3,15,-5,20],
+  [-20,-40,-5,-5,-5,-5,-40,-20],[120,-20,20,5,5,20,-20,120]
+];
+
+let board, cur, over, thinking, aiDepth, humanColor, aiColor;
+let pDepth, pStarter;
+let stats = {w:0, d:0, l:0};
+
+function loadPrefs() {
+  try { const s = JSON.parse(localStorage.getItem('reversi_stats_v1')); if(s) stats = s; } catch(e) {}
+  aiDepth = parseInt(localStorage.getItem('reversi_diff') || '4');
+  const st = localStorage.getItem('reversi_starter') || 'me';
+  humanColor = st === 'me' ? B : W;
+  aiColor = humanColor === B ? W : B;
+  pDepth = aiDepth; pStarter = st;
+  syncDiff('s', aiDepth); syncDiff('n', aiDepth);
+  syncStarter(st);
+}
+function saveStats() { localStorage.setItem('reversi_stats_v1', JSON.stringify(stats)); }
+
+function getFlips(b, r, c, p) {
+  if(b[r][c] !== E) return [];
+  const o = p===B ? W : B, fl = [];
+  for(const [dr,dc] of DIRS) {
+    const l = []; let nr = r+dr, nc = c+dc;
+    while(nr>=0&&nr<8&&nc>=0&&nc<8&&b[nr][nc]===o) { l.push([nr,nc]); nr+=dr; nc+=dc; }
+    if(l.length && nr>=0&&nr<8&&nc>=0&&nc<8 && b[nr][nc]===p) fl.push(...l);
+  }
+  return fl;
+}
+function validMoves(b, p) {
+  const m = [];
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(getFlips(b,r,c,p).length) m.push([r,c]);
+  return m;
+}
+function applyMove(b, r, c, p) {
+  const nb = b.map(x=>[...x]), fl = getFlips(nb,r,c,p);
+  nb[r][c] = p; for(const [fr,fc] of fl) nb[fr][fc] = p;
+  return nb;
+}
+function countDiscs(b) {
+  let bk=0, wh=0;
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) { if(b[r][c]===B) bk++; else if(b[r][c]===W) wh++; }
+  return {bk, wh};
+}
+
+// ── AI ──
+function evalBoard(b) {
+  let s = 0;
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+    if(b[r][c]===W) s += WT[r][c]; else if(b[r][c]===B) s -= WT[r][c];
+  }
+  const sign = aiColor===W ? 1 : -1;
+  s *= sign;
+  s += 5 * (validMoves(b, aiColor).length - validMoves(b, humanColor).length);
+  return s;
+}
+function minimax(b, d, a, be, mx) {
+  const p = mx ? aiColor : humanColor, m = validMoves(b, p);
+  if(d===0 || !m.length) {
+    if(!m.length) {
+      const om = validMoves(b, mx ? humanColor : aiColor);
+      if(!om.length) {
+        const {bk,wh} = countDiscs(b);
+        const ai = aiColor===B ? bk : wh, hu = aiColor===B ? wh : bk;
+        return ai > hu ? 10000 : ai < hu ? -10000 : 0;
+      }
+      return minimax(b, d, a, be, !mx);
+    }
+    return evalBoard(b);
+  }
+  if(mx) {
+    let v = -Infinity;
+    for(const [r,c] of m) { v = Math.max(v, minimax(applyMove(b,r,c,aiColor), d-1, a, be, false)); a = Math.max(a,v); if(be<=a) break; }
+    return v;
+  } else {
+    let v = Infinity;
+    for(const [r,c] of m) { v = Math.min(v, minimax(applyMove(b,r,c,humanColor), d-1, a, be, true)); be = Math.min(be,v); if(be<=a) break; }
+    return v;
+  }
+}
+function getBestMove(b) {
+  const m = validMoves(b, aiColor);
+  if(!m.length) return null;
+  m.sort(() => Math.random() - .5);
+  let bv = -Infinity, bm = m[0];
+  for(const [r,c] of m) {
+    const s = minimax(applyMove(b,r,c,aiColor), aiDepth, -Infinity, Infinity, false);
+    if(s > bv) { bv = s; bm = [r,c]; }
+  }
+  return bm;
+}
+
+// ── Render ──
+function cellSize() {
+  const a = Math.min(window.innerWidth - 36, window.innerHeight - 280, 400);
+  return Math.floor((a - 14) / 8);
+}
+function render() {
+  const sz = cellSize();
+  const el = document.getElementById('board');
+  el.style.setProperty('--cell', sz + 'px');
+  el.innerHTML = '';
+  const vm = cur===humanColor && !over
+    ? new Set(validMoves(board, humanColor).map(([r,c]) => r+','+c))
+    : new Set();
+  for(let r=0; r<8; r++) for(let c=0; c<8; c++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (vm.has(r+','+c) ? ' valid' : '');
+    if(board[r][c] !== E) {
+      const d = document.createElement('div');
+      d.className = 'disc ' + (board[r][c]===B ? 'black' : 'white');
+      d.id = 'd'+r+c;
+      cell.appendChild(d);
+    }
+    cell.addEventListener('click', () => handleClick(r, c));
+    el.appendChild(cell);
+  }
+}
+function updateScore() {
+  const {bk,wh} = countDiscs(board);
+  document.getElementById('scoreBlack').textContent = bk;
+  document.getElementById('scoreWhite').textContent = wh;
+}
+function setStatus(msg, hl) {
+  const el = document.getElementById('status');
+  el.innerHTML = msg;
+  el.className = 'status-text' + (hl ? ' hl' : '');
+}
+function thinkingDots(msg) {
+  setStatus('<span class="dots">' + msg + '<span>.</span><span>.</span><span>.</span></span>');
+}
+
+// ── Game flow ──
+function initGame() {
+  board = Array.from({length:8}, () => Array(8).fill(E));
+  board[3][3]=W; board[4][4]=W; board[3][4]=B; board[4][3]=B;
+  over = false; thinking = false; cur = B;
+  render(); updateScore();
+  if(humanColor === B) {
+    setStatus(T[lang].yourTurn);
+  } else {
+    thinkingDots(T[lang].thinking);
+    setTimeout(runAI, 500);
+  }
+}
+
+async function handleClick(r, c) {
+  if(over || thinking || cur !== humanColor) return;
+  if(!getFlips(board, r, c, humanColor).length) return;
+  board = applyMove(board, r, c, humanColor);
+  render(); updateScore();
+  const nd = document.getElementById('d'+r+c);
+  if(nd) nd.classList.add('place');
+  await nextTurn();
+}
+
+async function nextTurn() {
+  const am = validMoves(board, aiColor), hm = validMoves(board, humanColor);
+  if(!am.length && !hm.length) { endGame(); return; }
+  if(!am.length) { setStatus(T[lang].aiPasses); cur = humanColor; render(); return; }
+  cur = aiColor;
+  thinkingDots(T[lang].thinking);
+  thinking = true;
+  await delay(600);
+  await runAI();
+}
+
+async function runAI() {
+  thinking = true;
+  const mv = getBestMove(board);
+  if(mv) {
+    const [mr,mc] = mv;
+    board = applyMove(board, mr, mc, aiColor);
+    render(); updateScore();
+    const nd = document.getElementById('d'+mr+mc);
+    if(nd) nd.classList.add('place');
+  }
+  thinking = false;
+  const hm = validMoves(board, humanColor), am = validMoves(board, aiColor);
+  if(!hm.length && !am.length) { endGame(); return; }
+  if(!hm.length) { setStatus(T[lang].youPass); await delay(700); await runAI(); return; }
+  cur = humanColor; render(); setStatus(T[lang].yourTurn);
+}
+
+function endGame() {
+  over = true;
+  const {bk,wh} = countDiscs(board);
+  const hu = humanColor===B ? bk : wh, ai = humanColor===B ? wh : bk;
+  if(hu > ai)      { stats.w++; setStatus(T[lang].win(bk,wh), true); }
+  else if(ai > hu) { stats.l++; setStatus(T[lang].lose(bk,wh)); }
+  else             { stats.d++; setStatus(T[lang].draw(bk)); }
+  saveStats();
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── New game modal ──
+function openNewGame() {
+  pDepth = aiDepth;
+  pStarter = humanColor===B ? 'me' : 'ai';
+  syncDiff('n', pDepth); syncStarter(pStarter);
+  document.getElementById('ovNewGame').classList.add('open');
+}
+function closeNewGame() { document.getElementById('ovNewGame').classList.remove('open'); }
+function setStarter(w) { pStarter = w; syncStarter(w); }
+function syncStarter(w) {
+  document.getElementById('stMe').classList.toggle('active', w==='me');
+  document.getElementById('stAI').classList.toggle('active', w==='ai');
+}
+function setDiff2(d) { pDepth = d; syncDiff('n', d); }
+function launchGame() {
+  aiDepth = pDepth;
+  humanColor = pStarter==='me' ? B : W;
+  aiColor = humanColor===B ? W : B;
+  localStorage.setItem('reversi_diff', aiDepth);
+  localStorage.setItem('reversi_starter', pStarter);
+  syncDiff('s', aiDepth);
+  closeNewGame();
+  setTimeout(initGame, 80);
+}
+
+// ── Settings ──
+function openSettings() {
+  document.getElementById('statW').textContent = stats.w;
+  document.getElementById('statD').textContent = stats.d;
+  document.getElementById('statL').textContent = stats.l;
+  document.getElementById('ovSettings').classList.add('open');
+}
+function closeSettings() { document.getElementById('ovSettings').classList.remove('open'); }
+function setDiff(d) {
+  aiDepth = d;
+  localStorage.setItem('reversi_diff', d);
+  syncDiff('s', d); syncDiff('n', d);
+}
+function syncDiff(prefix, d) {
+  ['Easy','Norm','Hard'].forEach(x => document.getElementById(prefix+x).classList.remove('active'));
+  const map = {2: prefix+'Easy', 4: prefix+'Norm', 6: prefix+'Hard'};
+  if(map[d]) document.getElementById(map[d]).classList.add('active');
+}
+
+// ── About modal ──
+const APPS = [
+  {fr:'Institut de France',         en:'Institut de France',      url:'https://apps.apple.com/us/app/institut-de-france/id6761769529'},
+  {fr:'Présidents Français',        en:'French Presidents',        url:'https://apps.apple.com/us/app/pr%C3%A9sidents-fran%C3%A7ais/id6761324444'},
+  {fr:'Basilique de Saint-Denis',   en:'Basilique de Saint-Denis', url:'https://apps.apple.com/us/app/basilique-de-saint-denis/id6761709149'},
+  {fr:'Arbres de France',           en:'Trees of France',          url:'https://apps.apple.com/us/app/arbres-de-france/id6761685637'},
+  {fr:"Capitales d'Europe",         en:'Capitals of Europe',       url:'https://apps.apple.com/us/app/arbres-de-france/id6761685637'},
+  {fr:'Sénat Paris',                en:'Sénat Paris',              url:'https://apps.apple.com/us/app/s%C3%A9nat-paris/id6761363063'},
+  {fr:'Compositeurs',               en:'Composers',                url:'https://apps.apple.com/us/app/compositeurs/id6761656628'},
+  {fr:'Maréchaux Napoléon',         en:"Napoleon's Marshals",      url:'https://apps.apple.com/us/app/mar%C3%A9chaux-napol%C3%A9on/id6761374601'},
+  {fr:'Rois de France',             en:'Kings of France',          url:'https://apps.apple.com/us/app/rois-de-france/id6761322546'},
+  {fr:'Assemblée Paris',            en:'Assemblée Paris',          url:'https://apps.apple.com/us/app/assembl%C3%A9e-paris/id6761361079'},
+  {fr:'Panthéon Paris',             en:'Panthéon Paris',           url:'https://apps.apple.com/us/app/pantheon-paris/id6761335268'},
+  {fr:'Belote Calc',                en:'Belote Calc',              url:'https://apps.apple.com/us/app/belote-calc/id1483084001'},
+  {fr:'Cimetières Paris',           en:'Paris Cemeteries',         url:'https://apps.apple.com/us/app/cimetieres-paris/id6760751055'},
+  {fr:'Tarots Calc',                en:'Tarots Calc',              url:'https://apps.apple.com/us/app/tarots-calc/id1481989301'},
+  {fr:'Académie française',         en:'Académie française',       url:'https://apps.apple.com/us/app/academie-francaise/id6761334922'},
+  {fr:'Scènes Paris',               en:'Paris Stages',             url:'https://apps.apple.com/us/app/sc%C3%A8nes-paris/id6761293938'},
+  {fr:'Médisafe-Pharmacie',         en:'Medisafe-Pharmacy',        url:'https://apps.apple.com/us/app/medisafe-pharmacie/id6761271324'},
+  {fr:'Mes Restaurants',            en:'My Restaurants',           url:'https://apps.apple.com/us/app/mesrestaurants/id6760617965'},
+  {fr:'Cave Manager',               en:'Cave Manager',             url:'https://apps.apple.com/us/app/cave-manager/id6760126279'},
+  {fr:'Musées Paris',               en:'Paris Museums',            url:'https://apps.apple.com/us/app/musees-paris/id6760890465'},
+  {fr:'Théâtres Paris',             en:'Paris Theatres',           url:'https://apps.apple.com/us/app/theatres-paris/id6760929391'},
+  {fr:'Frigo Manager',              en:'Frigo Manager',            url:'https://apps.apple.com/us/app/frigo-manager/id6759219383'},
+  {fr:'Toi ou Moi',                 en:'Toi ou Moi',               url:'https://apps.apple.com/us/app/toi-ou-moi/id1475884625'},
+];
+
+function openAbout() {
+  const list = document.getElementById('appList');
+  list.innerHTML = '';
+  APPS.forEach(app => {
+    const div = document.createElement('div');
+    div.className = 'app-link';
+    div.innerHTML = '<span>' + (lang==='fr' ? app.fr : app.en) + '</span><span class="app-arrow">›</span>';
+    div.addEventListener('click', () => window.open(app.url, '_system'));
+    list.appendChild(div);
+  });
+  document.getElementById('ovAbout').classList.add('open');
+}
+function closeAbout() { document.getElementById('ovAbout').classList.remove('open'); }
+
+// ── Boot ──
+window.addEventListener('resize', render);
+loadPrefs();
+applyLang();
+initGame();
+</script>
+</body>
+</html>
